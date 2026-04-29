@@ -5,8 +5,10 @@ from .constants import (
     UNET_LOADER_NAME,
     VAE_LOADER_NAME,
 )
+from .latent import build_empty_latent
 from .lora_stack import apply_lora_stack
 from .native_inputs import build_native_input, build_optional_native_input, get_native_node_class
+from .resolution import build_resolution_inputs, resolve_resolution
 
 
 class AliceModelLoader:
@@ -21,18 +23,34 @@ class AliceModelLoader:
                 "clip_type": build_optional_native_input(CLIP_LOADER_NAME, "type"),
                 "clip_device": build_native_input(CLIP_LOADER_NAME, "device"),
                 "vae_name": build_optional_native_input(VAE_LOADER_NAME, "vae_name"),
+                **build_resolution_inputs(),
             },
             "optional": {
                 "lora_stack": (ALICE_LORA_STACK_TYPE,),
             },
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
-    RETURN_NAMES = ("模型", "CLIP", "VAE")
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "LATENT")
+    RETURN_NAMES = ("模型", "CLIP", "VAE", "Latent")
     FUNCTION = "load"
     CATEGORY = "Alice/Loaders"
 
-    def load(self, ckpt_name, unet_name, weight_dtype, clip_name, clip_type, clip_device, vae_name, lora_stack=None):
+    def load(
+        self,
+        ckpt_name,
+        unet_name,
+        weight_dtype,
+        clip_name,
+        clip_type,
+        clip_device,
+        vae_name,
+        resolution,
+        width,
+        height,
+        lora_stack=None,
+    ):
+        resolved_width, resolved_height = resolve_resolution(resolution, width, height)
+
         if ckpt_name != "None":
             model, clip, vae = self.load_from_checkpoint(ckpt_name)
         else:
@@ -46,7 +64,8 @@ class AliceModelLoader:
             )
 
         model, clip = apply_lora_stack(model, clip, lora_stack)
-        return model, clip, vae
+        latent = build_empty_latent(resolved_width, resolved_height)
+        return model, clip, vae, latent
 
     def load_from_checkpoint(self, ckpt_name):
         checkpoint_loader = get_native_node_class(CHECKPOINT_LOADER_NAME)()
