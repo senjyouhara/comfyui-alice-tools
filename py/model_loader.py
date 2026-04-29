@@ -1,44 +1,12 @@
-from nodes import NODE_CLASS_MAPPINGS as ALL_NODE_CLASS_MAPPINGS
-
-
-CHECKPOINT_LOADER_NAME = "CheckpointLoaderSimple"
-UNET_LOADER_NAME = "UNETLoader"
-CLIP_LOADER_NAME = "CLIPLoader"
-VAE_LOADER_NAME = "VAELoader"
-
-
-def get_native_node_class(node_name):
-    node_class = ALL_NODE_CLASS_MAPPINGS.get(node_name)
-    if node_class is None:
-        raise RuntimeError(f"Native node not available: {node_name}")
-    return node_class
-
-
-def get_native_required_input(node_name, input_name):
-    node_class = get_native_node_class(node_name)
-    required_inputs = node_class.INPUT_TYPES()["required"]
-    if input_name not in required_inputs:
-        raise RuntimeError(f"Native input not available: {node_name}.{input_name}")
-
-    input_spec = required_inputs[input_name]
-    options = list(input_spec[0])
-    settings = dict(input_spec[1]) if len(input_spec) > 1 else {}
-    return options, settings
-
-
-def build_optional_native_input(node_name, input_name):
-    options, settings = get_native_required_input(node_name, input_name)
-    if "None" not in options:
-        options.append("None")
-    settings["default"] = "None"
-    return (options, settings)
-
-
-def build_native_input(node_name, input_name):
-    options, settings = get_native_required_input(node_name, input_name)
-    if settings:
-        return (options, settings)
-    return (options,)
+from .constants import (
+    ALICE_LORA_STACK_TYPE,
+    CHECKPOINT_LOADER_NAME,
+    CLIP_LOADER_NAME,
+    UNET_LOADER_NAME,
+    VAE_LOADER_NAME,
+)
+from .lora_stack import apply_lora_stack
+from .native_inputs import build_native_input, build_optional_native_input, get_native_node_class
 
 
 class AliceModelLoader:
@@ -50,10 +18,13 @@ class AliceModelLoader:
                 "unet_name": build_optional_native_input(UNET_LOADER_NAME, "unet_name"),
                 "weight_dtype": build_native_input(UNET_LOADER_NAME, "weight_dtype"),
                 "clip_name": build_optional_native_input(CLIP_LOADER_NAME, "clip_name"),
-                "clip_type": build_native_input(CLIP_LOADER_NAME, "type"),
+                "clip_type": build_optional_native_input(CLIP_LOADER_NAME, "type"),
                 "clip_device": build_native_input(CLIP_LOADER_NAME, "device"),
                 "vae_name": build_optional_native_input(VAE_LOADER_NAME, "vae_name"),
-            }
+            },
+            "optional": {
+                "lora_stack": (ALICE_LORA_STACK_TYPE,),
+            },
         }
 
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
@@ -61,10 +32,21 @@ class AliceModelLoader:
     FUNCTION = "load"
     CATEGORY = "Alice/Loaders"
 
-    def load(self, ckpt_name, unet_name, weight_dtype, clip_name, clip_type, clip_device, vae_name):
+    def load(self, ckpt_name, unet_name, weight_dtype, clip_name, clip_type, clip_device, vae_name, lora_stack=None):
         if ckpt_name != "None":
-            return self.load_from_checkpoint(ckpt_name)
-        return self.load_from_components(unet_name, weight_dtype, clip_name, clip_type, clip_device, vae_name)
+            model, clip, vae = self.load_from_checkpoint(ckpt_name)
+        else:
+            model, clip, vae = self.load_from_components(
+                unet_name,
+                weight_dtype,
+                clip_name,
+                clip_type,
+                clip_device,
+                vae_name,
+            )
+
+        model, clip = apply_lora_stack(model, clip, lora_stack)
+        return model, clip, vae
 
     def load_from_checkpoint(self, ckpt_name):
         checkpoint_loader = get_native_node_class(CHECKPOINT_LOADER_NAME)()
@@ -83,12 +65,18 @@ class AliceModelLoader:
             for field_name, field_value in (
                 ("unet_name", unet_name),
                 ("clip_name", clip_name),
+                ("clip_type", clip_type),
                 ("vae_name", vae_name),
             )
             if field_value == "None"
         ]
         if missing_fields:
             missing_fields_text = ", ".join(missing_fields)
+            if "clip_type" in missing_fields:
+                raise ValueError(
+                    f"When ckpt_name is None, these fields are required: {missing_fields_text}. "
+                    "Please select a value for clip_type."
+                )
             raise ValueError(f"When ckpt_name is None, these fields are required: {missing_fields_text}")
 
         unet_loader = get_native_node_class(UNET_LOADER_NAME)()
@@ -99,12 +87,3 @@ class AliceModelLoader:
         clip, = clip_loader.load_clip(clip_name, clip_type, clip_device)
         vae, = vae_loader.load_vae(vae_name)
         return model, clip, vae
-
-
-NODE_CLASS_MAPPINGS = {
-    "AliceModelLoader": AliceModelLoader,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "AliceModelLoader": "Alice 模型加载器",
-}
