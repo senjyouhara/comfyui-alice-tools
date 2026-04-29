@@ -6,10 +6,10 @@ license = { file = "LICENSE" }
 dependencies = []
 
 [project.urls]
-Repository = ""
+Repository = "https://github.com/senjyouhara/comfyui-alice-tools"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = "alice"
+PublisherId = "senjyouhara"
 DisplayName = "comfyui-alice-tools"
 Icon = ""
