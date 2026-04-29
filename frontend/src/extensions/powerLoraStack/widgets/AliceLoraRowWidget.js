@@ -1,7 +1,6 @@
 import { promptForNumber, showLoraChooser } from "../bridges/comfyDialogs.js";
-import { DEFAULT_ROW_VALUE, STRENGTH_MODE_SEPARATE } from "../constants.js";
+import { DEFAULT_ROW_VALUE } from "../constants.js";
 import { fitString, getRowWidgets, isLowQuality, moveWidget, roundStrength } from "../layout.js";
-import { getStrengthMode } from "../state.js";
 import { AliceBaseWidget } from "./AliceBaseWidget.js";
 
 export class AliceLoraRowWidget extends AliceBaseWidget {
@@ -12,6 +11,7 @@ export class AliceLoraRowWidget extends AliceBaseWidget {
       ...DEFAULT_ROW_VALUE,
       ...(initialValue || {}),
     };
+    this.value.strengthTwo = null;
   }
 
   _changeStrength(node, key, delta) {
@@ -59,17 +59,13 @@ export class AliceLoraRowWidget extends AliceBaseWidget {
     const innerPaddingY = 3;
     const innerY = y + innerPaddingY;
     const innerHeight = drawHeight - innerPaddingY * 2;
-    const mode = getStrengthMode(node);
     const toggleX = margin + 10;
     const toggleWidth = 24;
     const toggleHeight = 12;
     const toggleKnobSize = 8;
     const actionsWidth = 66;
-    const numberGap = 8;
-    const numberWidth = 76;
-    const controlCount = mode === STRENGTH_MODE_SEPARATE ? 2 : 1;
-    const controlsWidth = controlCount * numberWidth + (controlCount - 1) * numberGap;
     const actionX = width - margin - actionsWidth;
+    const controlsWidth = 76;
     const controlsX = actionX - 8 - controlsWidth;
     const nameX = toggleX + toggleWidth + 12;
     const nameWidth = Math.max(60, controlsX - 10 - nameX);
@@ -78,11 +74,7 @@ export class AliceLoraRowWidget extends AliceBaseWidget {
     const toggleKnobX = this.value.on ? toggleX + toggleWidth - toggleKnobSize - 2 : toggleX + 2;
     const toggleKnobY = middleY - toggleKnobSize / 2;
 
-    if (mode === STRENGTH_MODE_SEPARATE) {
-      this.value.strengthTwo = this.value.strengthTwo ?? this.value.strength;
-    } else {
-      this.value.strengthTwo = null;
-    }
+    this.value.strengthTwo = null;
 
     ctx.save();
     ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR;
@@ -111,57 +103,21 @@ export class AliceLoraRowWidget extends AliceBaseWidget {
 
     this.hitAreas = {};
 
-    let currentControlX = controlsX;
-    if (mode === STRENGTH_MODE_SEPARATE) {
-      ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-      ctx.fillText("M", currentControlX - 12, middleY);
-      const modelControl = this._drawNumberControl(ctx, currentControlX, y, drawHeight, this.value.strength);
-      currentControlX += modelControl.totalWidth + numberGap;
-      ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-      ctx.fillText("C", currentControlX - 12, middleY);
-      const clipControl = this._drawNumberControl(ctx, currentControlX, y, drawHeight, this.value.strengthTwo);
-
-      this.hitAreas.modelDec = {
-        bounds: modelControl.dec,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", -0.05),
-      };
-      this.hitAreas.modelValue = {
-        bounds: modelControl.value,
-        onClick: (event, _pos, currentNode) => this._promptStrength(event, currentNode, "strength"),
-      };
-      this.hitAreas.modelInc = {
-        bounds: modelControl.inc,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", 0.05),
-      };
-      this.hitAreas.clipDec = {
-        bounds: clipControl.dec,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strengthTwo", -0.05),
-      };
-      this.hitAreas.clipValue = {
-        bounds: clipControl.value,
-        onClick: (event, _pos, currentNode) => this._promptStrength(event, currentNode, "strengthTwo"),
-      };
-      this.hitAreas.clipInc = {
-        bounds: clipControl.inc,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strengthTwo", 0.05),
-      };
-    } else {
-      ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-      ctx.fillText("S", currentControlX - 12, middleY);
-      const strengthControl = this._drawNumberControl(ctx, currentControlX, y, drawHeight, this.value.strength);
-      this.hitAreas.modelDec = {
-        bounds: strengthControl.dec,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", -0.05),
-      };
-      this.hitAreas.modelValue = {
-        bounds: strengthControl.value,
-        onClick: (event, _pos, currentNode) => this._promptStrength(event, currentNode, "strength"),
-      };
-      this.hitAreas.modelInc = {
-        bounds: strengthControl.inc,
-        onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", 0.05),
-      };
-    }
+    ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
+    ctx.fillText("S", controlsX - 12, middleY);
+    const strengthControl = this._drawNumberControl(ctx, controlsX, y, drawHeight, this.value.strength);
+    this.hitAreas.modelDec = {
+      bounds: strengthControl.dec,
+      onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", -0.05),
+    };
+    this.hitAreas.modelValue = {
+      bounds: strengthControl.value,
+      onClick: (event, _pos, currentNode) => this._promptStrength(event, currentNode, "strength"),
+    };
+    this.hitAreas.modelInc = {
+      bounds: strengthControl.inc,
+      onClick: (_event, _pos, currentNode) => this._changeStrength(currentNode, "strength", 0.05),
+    };
 
     const actionWidth = 18;
     const actionGap = 4;
@@ -210,17 +166,11 @@ export class AliceLoraRowWidget extends AliceBaseWidget {
   }
 
   serializeValue(node) {
-    const output = {
+    return {
       on: this.value.on !== false,
       lora: this.value.lora || "None",
       strength: Number(this.value.strength ?? 1),
       order: getRowWidgets(node).indexOf(this),
     };
-
-    if (getStrengthMode(node) === STRENGTH_MODE_SEPARATE) {
-      output.strengthTwo = Number(this.value.strengthTwo ?? this.value.strength ?? 1);
-    }
-
-    return output;
   }
 }

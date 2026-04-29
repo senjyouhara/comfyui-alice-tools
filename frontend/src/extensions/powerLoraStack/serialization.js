@@ -1,7 +1,5 @@
-import { applyStrengthModeToRows, ensureStrengthMode } from "./state.js";
 import { updateNodeSize } from "./layout.js";
 import { AliceAddButtonWidget } from "./widgets/AliceAddButtonWidget.js";
-import { AliceHeaderWidget } from "./widgets/AliceHeaderWidget.js";
 import { AliceLoraRowWidget } from "./widgets/AliceLoraRowWidget.js";
 
 export function isSerializedRow(value) {
@@ -19,12 +17,10 @@ export function clearWidgets(node) {
 export function rebuildWidgets(node, serializedValues = []) {
   clearWidgets(node);
   node._aliceRowCounter = 0;
-  node.addCustomWidget(new AliceHeaderWidget());
   for (const value of serializedValues.filter(isSerializedRow)) {
     node._aliceAddRow(value, false);
   }
   node.addCustomWidget(new AliceAddButtonWidget());
-  applyStrengthModeToRows(node);
   updateNodeSize(node);
 }
 
@@ -35,7 +31,6 @@ export function ensureNodeHelpers(node) {
 
   node._alicePowerLoraReady = true;
   node.serialize_widgets = true;
-  ensureStrengthMode(node);
   node._aliceRowCounter = 0;
 
   node._aliceAddRow = function (initialValue = null, markDirty = true) {
@@ -50,7 +45,6 @@ export function ensureNodeHelpers(node) {
       const refreshedAddButtonIndex = this.widgets.indexOf(addButton);
       this.widgets.splice(refreshedAddButtonIndex, 0, widget);
     }
-    applyStrengthModeToRows(this);
     updateNodeSize(this);
     if (markDirty) {
       this.setDirtyCanvas(true, true);
