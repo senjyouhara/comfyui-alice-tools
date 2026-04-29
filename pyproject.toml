@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-alice-tools"
+description = "To enhance the usability of ComfyUI, optimizations and integrations have been implemented for several commonly used nodes."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = ""
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "alice"
+DisplayName = "comfyui-alice-tools"
+Icon = ""
