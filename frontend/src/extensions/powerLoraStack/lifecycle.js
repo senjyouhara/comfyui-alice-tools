@@ -1,5 +1,9 @@
-import { rebuildWidgets, ensureNodeHelpers } from "./serialization.js";
 import { NODE_NAME } from "./constants.js";
+import { rebuildWidgets, ensureNodeHelpers } from "./serialization.js";
+
+function normalizeWidgetValues(info) {
+  return Array.isArray(info?.widgets_values) ? info.widgets_values : [];
+}
 
 export function beforeRegisterNodeDef(nodeType, nodeData) {
   if (nodeData.name !== NODE_NAME) {
@@ -20,7 +24,7 @@ export function beforeRegisterNodeDef(nodeType, nodeData) {
   nodeType.prototype.configure = function (info) {
     const result = configure ? configure.apply(this, arguments) : undefined;
     ensureNodeHelpers(this);
-    rebuildWidgets(this, Array.isArray(info?.widgets_values) ? info.widgets_values : []);
+    rebuildWidgets(this, normalizeWidgetValues(info));
     return result;
   };
 }

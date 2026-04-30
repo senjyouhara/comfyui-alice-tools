@@ -1,6 +1,128 @@
-import { updateNodeSize } from "./layout.js";
-import { AliceAddButtonWidget } from "./widgets/AliceAddButtonWidget.js";
-import { AliceLoraRowWidget } from "./widgets/AliceLoraRowWidget.js";
+import { reactive } from "vue";
+
+import { createVueNodeWidget } from "../../composables/createVueNodeWidget.js";
+import { DEFAULT_ROW_VALUE } from "./constants.js";
+import { getRowWidgets, updateNodeSize } from "./layout.js";
+import { applyStrengthModeToRows, ensureStrengthMode } from "./state.js";
+import PowerLoraAddButtonWidget from "./components/PowerLoraAddButtonWidget.vue";
+import PowerLoraRowWidget from "./components/PowerLoraRowWidget.vue";
+
+const ADD_BUTTON_NAME = "__alice_add_button__";
+const ROW_WIDGET_HEIGHT = 42;
+const ADD_BUTTON_WIDGET_HEIGHT = 35;
+
+function toNumberOrDefault(value, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function normalizeRowValue(initialValue = null) {
+  return {
+    on: initialValue?.on !== false,
+    lora: typeof initialValue?.lora === "string" ? initialValue.lora : DEFAULT_ROW_VALUE.lora,
+    strength: toNumberOrDefault(initialValue?.strength, DEFAULT_ROW_VALUE.strength),
+    strengthTwo: initialValue?.strengthTwo ?? DEFAULT_ROW_VALUE.strengthTwo,
+  };
+}
+
+function replaceRowValue(target, nextValue) {
+  Object.assign(target, normalizeRowValue(nextValue));
+}
+
+function removeWidget(node, widget) {
+  if (!widget) {
+    return;
+  }
+
+  if (typeof node.removeWidget === "function") {
+    try {
+      node.removeWidget(widget);
+      return;
+    } catch {
+      const index = node.widgets?.indexOf(widget) ?? -1;
+      if (index !== -1) {
+        node.removeWidget(index);
+        return;
+      }
+    }
+  }
+
+  widget.onRemove?.();
+  const index = node.widgets?.indexOf(widget) ?? -1;
+  if (index !== -1) {
+    node.widgets.splice(index, 1);
+  }
+}
+
+function moveWidgetBeforeAddButton(node, widget) {
+  const addButtonIndex = node.widgets.findIndex((entry) => entry?.name === ADD_BUTTON_NAME);
+  if (addButtonIndex === -1) {
+    return;
+  }
+
+  const widgetIndex = node.widgets.indexOf(widget);
+  if (widgetIndex === -1 || widgetIndex < addButtonIndex) {
+    return;
+  }
+
+  node.widgets.splice(widgetIndex, 1);
+  const refreshedAddButtonIndex = node.widgets.findIndex((entry) => entry?.name === ADD_BUTTON_NAME);
+  node.widgets.splice(refreshedAddButtonIndex, 0, widget);
+}
+
+function createRowWidget(node, name, initialValue) {
+  const value = reactive(normalizeRowValue(initialValue));
+  let widget = null;
+
+  widget = createVueNodeWidget({
+    node,
+    name,
+    type: "power-lora-row",
+    component: PowerLoraRowWidget,
+    props: { value },
+    getValue: () => value,
+    setValue: (nextValue) => replaceRowValue(value, nextValue),
+    serializeValue: (currentNode) => ({
+      on: value.on !== false,
+      lora: value.lora || "None",
+      strength: Number(value.strength ?? 1),
+      order: getRowWidgets(currentNode).indexOf(widget),
+    }),
+    getMinHeight: () => ROW_WIDGET_HEIGHT,
+    getMaxHeight: () => ROW_WIDGET_HEIGHT,
+    widgetProps: {
+      __aliceRowWidget: true,
+    },
+  });
+
+  return widget;
+}
+
+function createAddButtonWidget(node) {
+  return createVueNodeWidget({
+    node,
+    name: ADD_BUTTON_NAME,
+    type: "power-lora-add-button",
+    component: PowerLoraAddButtonWidget,
+    serialize: false,
+    getValue: () => "",
+    setValue: () => {},
+    getMinHeight: () => ADD_BUTTON_WIDGET_HEIGHT,
+    getMaxHeight: () => ADD_BUTTON_WIDGET_HEIGHT,
+  });
+}
+
+function getSerializedRows(serializedValues = []) {
+  return serializedValues
+    .filter(isSerializedRow)
+    .map((value, index) => ({ value, index }))
+    .sort((left, right) => {
+      const leftOrder = Number.isFinite(Number(left.value?.order)) ? Number(left.value.order) : left.index;
+      const rightOrder = Number.isFinite(Number(right.value?.order)) ? Number(right.value.order) : right.index;
+      return leftOrder - rightOrder;
+    })
+    .map((entry) => entry.value);
+}
 
 export function isSerializedRow(value) {
   return value && typeof value === "object" && typeof value.lora === "string";
@@ -11,16 +133,21 @@ export function clearWidgets(node) {
     node.widgets = [];
     return;
   }
-  node.widgets.length = 0;
+
+  while (node.widgets.length) {
+    removeWidget(node, node.widgets[node.widgets.length - 1]);
+  }
 }
 
 export function rebuildWidgets(node, serializedValues = []) {
   clearWidgets(node);
+  ensureStrengthMode(node);
   node._aliceRowCounter = 0;
-  for (const value of serializedValues.filter(isSerializedRow)) {
+  for (const value of getSerializedRows(serializedValues)) {
     node._aliceAddRow(value, false);
   }
-  node.addCustomWidget(new AliceAddButtonWidget());
+  createAddButtonWidget(node);
+  applyStrengthModeToRows(node);
   updateNodeSize(node);
 }
 
@@ -32,32 +159,23 @@ export function ensureNodeHelpers(node) {
   node._alicePowerLoraReady = true;
   node.serialize_widgets = true;
   node._aliceRowCounter = 0;
+  ensureStrengthMode(node);
 
   node._aliceAddRow = function (initialValue = null, markDirty = true) {
     this._aliceRowCounter += 1;
-    const widget = new AliceLoraRowWidget(`lora_${this._aliceRowCounter}`, initialValue);
-    const addButtonIndex = this.widgets.findIndex((entry) => entry?.name === "__alice_add_button__");
-    this.addCustomWidget(widget);
-    if (addButtonIndex !== -1) {
-      const widgetIndex = this.widgets.indexOf(widget);
-      const addButton = this.widgets[addButtonIndex];
-      this.widgets.splice(widgetIndex, 1);
-      const refreshedAddButtonIndex = this.widgets.indexOf(addButton);
-      this.widgets.splice(refreshedAddButtonIndex, 0, widget);
-    }
+    const widget = createRowWidget(this, `lora_${this._aliceRowCounter}`, initialValue);
+    moveWidgetBeforeAddButton(this, widget);
+    applyStrengthModeToRows(this);
     updateNodeSize(this);
     if (markDirty) {
-      this.setDirtyCanvas(true, true);
+      this.setDirtyCanvas?.(true, true);
     }
     return widget;
   };
 
   node._aliceRemoveRow = function (widget) {
-    const index = this.widgets.indexOf(widget);
-    if (index !== -1) {
-      this.widgets.splice(index, 1);
-      updateNodeSize(this);
-      this.setDirtyCanvas(true, true);
-    }
+    removeWidget(this, widget);
+    updateNodeSize(this);
+    this.setDirtyCanvas?.(true, true);
   };
 }

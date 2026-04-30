@@ -18,9 +18,12 @@ export function ensureStrengthMode(node) {
 }
 
 export function applyStrengthModeToRows(node) {
+  const isSeparateMode = getStrengthMode(node) === STRENGTH_MODE_SEPARATE;
   for (const widget of getRowWidgets(node)) {
-    if (getStrengthMode(node) === STRENGTH_MODE_SEPARATE) {
+    if (isSeparateMode) {
       widget.value.strengthTwo = widget.value.strengthTwo ?? widget.value.strength;
+    } else {
+      widget.value.strengthTwo = null;
     }
   }
 }
