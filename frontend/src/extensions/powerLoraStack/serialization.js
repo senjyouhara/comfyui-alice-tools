@@ -1,6 +1,13 @@
 import { reactive } from "vue";
 
 import { createVueNodeWidget } from "../../composables/createVueNodeWidget.js";
+import {
+  clearWidgets as clearStackWidgets,
+  getOrderedSerializedRows,
+  moveWidgetBeforeNamedWidget,
+  removeWidget,
+  toNumberOrDefault,
+} from "../shared/stackWidgets/serialization.js";
 import { DEFAULT_ROW_VALUE } from "./constants.js";
 import { getRowWidgets, updateNodeSize } from "./layout.js";
 import { applyStrengthModeToRows, ensureStrengthMode } from "./state.js";
@@ -10,11 +17,6 @@ import PowerLoraRowWidget from "./components/PowerLoraRowWidget.vue";
 const ADD_BUTTON_NAME = "__alice_add_button__";
 const ROW_WIDGET_HEIGHT = 42;
 const ADD_BUTTON_WIDGET_HEIGHT = 35;
-
-function toNumberOrDefault(value, fallback) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : fallback;
-}
 
 function normalizeRowValue(initialValue = null) {
   return {
@@ -27,47 +29,6 @@ function normalizeRowValue(initialValue = null) {
 
 function replaceRowValue(target, nextValue) {
   Object.assign(target, normalizeRowValue(nextValue));
-}
-
-function removeWidget(node, widget) {
-  if (!widget) {
-    return;
-  }
-
-  if (typeof node.removeWidget === "function") {
-    try {
-      node.removeWidget(widget);
-      return;
-    } catch {
-      const index = node.widgets?.indexOf(widget) ?? -1;
-      if (index !== -1) {
-        node.removeWidget(index);
-        return;
-      }
-    }
-  }
-
-  widget.onRemove?.();
-  const index = node.widgets?.indexOf(widget) ?? -1;
-  if (index !== -1) {
-    node.widgets.splice(index, 1);
-  }
-}
-
-function moveWidgetBeforeAddButton(node, widget) {
-  const addButtonIndex = node.widgets.findIndex((entry) => entry?.name === ADD_BUTTON_NAME);
-  if (addButtonIndex === -1) {
-    return;
-  }
-
-  const widgetIndex = node.widgets.indexOf(widget);
-  if (widgetIndex === -1 || widgetIndex < addButtonIndex) {
-    return;
-  }
-
-  node.widgets.splice(widgetIndex, 1);
-  const refreshedAddButtonIndex = node.widgets.findIndex((entry) => entry?.name === ADD_BUTTON_NAME);
-  node.widgets.splice(refreshedAddButtonIndex, 0, widget);
 }
 
 function createRowWidget(node, name, initialValue) {
@@ -112,38 +73,19 @@ function createAddButtonWidget(node) {
   });
 }
 
-function getSerializedRows(serializedValues = []) {
-  return serializedValues
-    .filter(isSerializedRow)
-    .map((value, index) => ({ value, index }))
-    .sort((left, right) => {
-      const leftOrder = Number.isFinite(Number(left.value?.order)) ? Number(left.value.order) : left.index;
-      const rightOrder = Number.isFinite(Number(right.value?.order)) ? Number(right.value.order) : right.index;
-      return leftOrder - rightOrder;
-    })
-    .map((entry) => entry.value);
-}
-
 export function isSerializedRow(value) {
   return value && typeof value === "object" && typeof value.lora === "string";
 }
 
 export function clearWidgets(node) {
-  if (!Array.isArray(node.widgets)) {
-    node.widgets = [];
-    return;
-  }
-
-  while (node.widgets.length) {
-    removeWidget(node, node.widgets[node.widgets.length - 1]);
-  }
+  clearStackWidgets(node);
 }
 
 export function rebuildWidgets(node, serializedValues = []) {
   clearWidgets(node);
   ensureStrengthMode(node);
   node._aliceRowCounter = 0;
-  for (const value of getSerializedRows(serializedValues)) {
+  for (const value of getOrderedSerializedRows(serializedValues, isSerializedRow)) {
     node._aliceAddRow(value, false);
   }
   createAddButtonWidget(node);
@@ -164,7 +106,7 @@ export function ensureNodeHelpers(node) {
   node._aliceAddRow = function (initialValue = null, markDirty = true) {
     this._aliceRowCounter += 1;
     const widget = createRowWidget(this, `lora_${this._aliceRowCounter}`, initialValue);
-    moveWidgetBeforeAddButton(this, widget);
+    moveWidgetBeforeNamedWidget(this, widget, ADD_BUTTON_NAME);
     applyStrengthModeToRows(this);
     updateNodeSize(this);
     if (markDirty) {

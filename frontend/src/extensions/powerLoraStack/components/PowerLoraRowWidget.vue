@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 
+import StackRowActions from "../../shared/stackWidgets/StackRowActions.vue";
 import { getAvailableLoras } from "../bridges/loraRegistry.js";
 import { moveWidget, roundStrength } from "../layout.js";
 
@@ -60,7 +61,6 @@ function move(direction) {
 function removeRow() {
   props.node._aliceRemoveRow?.(props.widget);
 }
-
 </script>
 
 <template>
@@ -96,21 +96,21 @@ function removeRow() {
       </button>
     </div>
 
-    <div class="action-group">
-      <button type="button" class="icon-button" aria-label="Move row up" @click="move(-1)">
-        <i class="pi pi-arrow-up" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-button" aria-label="Move row down" @click="move(1)">
-        <i class="pi pi-arrow-down" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-button danger" aria-label="Delete row" @click="removeRow()">
-        <i class="pi pi-trash" aria-hidden="true"></i>
-      </button>
-    </div>
+    <StackRowActions @move-up="move(-1)" @move-down="move(1)" @remove="removeRow" />
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+.strength-input::-webkit-outer-spin-button,
+.strength-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.strength-input {
+  -moz-appearance: textfield; /* Firefox 兼容 */
+}
+
 .power-lora-row {
   box-sizing: border-box;
   display: flex;
@@ -182,8 +182,7 @@ function removeRow() {
   height: 24px;
 }
 
-.strength-group,
-.action-group {
+.strength-group {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -201,10 +200,6 @@ function removeRow() {
 
 .icon-button :deep(.pi) {
   font-size: 12px;
-}
-
-.icon-button.danger {
-  color: #fca5a5;
 }
 
 .strength-input {
