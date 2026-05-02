@@ -1,6 +1,7 @@
 import os
 
 from .py import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from .py import model_paths
 
 PLUGIN_ROOT = os.path.dirname(os.path.realpath(__file__))
 DEFAULT_WEB_DIRECTORY = "web_version/v1"

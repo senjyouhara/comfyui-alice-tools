@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 
 const NODE_NAME = "AliceModelLoader";
 const CUSTOM_RESOLUTION_OPTION = "自定义";
+const NONE_OPTION = "None";
 const HIDDEN_WIDGET_TYPE = "converted-widget";
 const MAX_WIDGET_READY_RETRIES = 20;
 
@@ -20,7 +21,6 @@ function setWidgetVisibility(widget, visible, suffix = "") {
   }
 
   widget.hidden = !visible;
-  widget.disabled = !visible;
   widget.type = visible ? widget._aliceOriginalType : `${HIDDEN_WIDGET_TYPE}${suffix}`;
   widget.computeSize = visible ? widget._aliceOriginalComputeSize : () => [0, -4];
 
@@ -72,19 +72,19 @@ function scheduleResolutionWidgetsUpdate(node, resolutionValue = undefined) {
   });
 }
 
-function installResolutionValueWatcher(node, resolutionWidget) {
-  if (!resolutionWidget || resolutionWidget._aliceValueWatcherInstalled) {
+function installValueWatcher(widget, watcherKey, onChange) {
+  if (!widget || widget[watcherKey]) {
     return;
   }
 
-  resolutionWidget._aliceValueWatcherInstalled = true;
+  widget[watcherKey] = true;
   const originalDescriptor =
-    Object.getOwnPropertyDescriptor(resolutionWidget, "value") ??
-    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(resolutionWidget), "value") ??
-    Object.getOwnPropertyDescriptor(resolutionWidget.constructor?.prototype ?? {}, "value");
-  let widgetValue = resolutionWidget.value;
+    Object.getOwnPropertyDescriptor(widget, "value") ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(widget), "value") ??
+    Object.getOwnPropertyDescriptor(widget.constructor?.prototype ?? {}, "value");
+  let widgetValue = widget.value;
 
-  Object.defineProperty(resolutionWidget, "value", {
+  Object.defineProperty(widget, "value", {
     configurable: true,
     enumerable: true,
     get() {
@@ -99,15 +99,68 @@ function installResolutionValueWatcher(node, resolutionWidget) {
       } else {
         widgetValue = newValue;
       }
-      scheduleResolutionWidgetsUpdate(node, newValue);
+      onChange(newValue);
     },
   });
+}
+
+function installResolutionValueWatcher(node, resolutionWidget) {
+  installValueWatcher(resolutionWidget, "_aliceValueWatcherInstalled", (newValue) => {
+    scheduleResolutionWidgetsUpdate(node, newValue);
+  });
+}
+
+function setWidgetValue(widget, value) {
+  if (widget && widget.value !== value) {
+    widget.value = value;
+  }
+}
+
+function syncUnetSourceWidgets(node, changedWidgetName, changedValue) {
+  const unetWidget = getWidget(node, "unet_name");
+  const unetGgufWidget = getWidget(node, "unet_gguf");
+  if (!unetWidget || !unetGgufWidget) {
+    return;
+  }
+
+  if (changedWidgetName === "unet_name" && changedValue !== NONE_OPTION) {
+    setWidgetValue(unetGgufWidget, NONE_OPTION);
+  }
+  if (changedWidgetName === "unet_gguf" && changedValue !== NONE_OPTION) {
+    setWidgetValue(unetWidget, NONE_OPTION);
+  }
+}
+
+function installUnetSourceWatcher(node, widgetName) {
+  const widget = getWidget(node, widgetName);
+  if (!widget || widget._aliceUnetSourceWatcherInstalled) {
+    return;
+  }
+
+  widget._aliceUnetSourceWatcherInstalled = true;
+  installValueWatcher(widget, `_alice${widgetName}ValueWatcherInstalled`, (newValue) => {
+    syncUnetSourceWidgets(node, widgetName, newValue);
+  });
+
+  const originalCallback = widget.callback;
+  widget.callback = function (value, ...args) {
+    const result = originalCallback?.call(this, value, ...args);
+    syncUnetSourceWidgets(node, widgetName, value ?? this.value);
+    return result;
+  };
+}
+
+function ensureUnetSourceWidgetBehavior(node) {
+  installUnetSourceWatcher(node, "unet_name");
+  installUnetSourceWatcher(node, "unet_gguf");
 }
 
 function ensureResolutionWidgetBehavior(node, retriesLeft = MAX_WIDGET_READY_RETRIES) {
   const resolutionWidget = getWidget(node, "resolution");
   const widthWidget = getWidget(node, "width");
   const heightWidget = getWidget(node, "height");
+
+  ensureUnetSourceWidgetBehavior(node);
 
   if (!resolutionWidget || !widthWidget || !heightWidget) {
     if (retriesLeft > 0) {

@@ -2,12 +2,18 @@ from .constants import (
     ALICE_LORA_STACK_TYPE,
     CHECKPOINT_LOADER_NAME,
     CLIP_LOADER_NAME,
+    UNET_GGUF_LOADER_NAME,
     UNET_LOADER_NAME,
     VAE_LOADER_NAME,
 )
 from .latent import build_empty_latent
 from .lora_stack import apply_lora_stack
-from .native_inputs import build_native_input, build_optional_native_input, get_native_node_class
+from .native_inputs import (
+    build_native_input,
+    build_optional_native_input,
+    build_optional_native_input_if_available,
+    get_native_node_class,
+)
 from .resolution import build_resolution_inputs, resolve_resolution
 
 
@@ -18,6 +24,7 @@ class AliceModelLoader:
             "required": {
                 "ckpt_name": build_optional_native_input(CHECKPOINT_LOADER_NAME, "ckpt_name"),
                 "unet_name": build_optional_native_input(UNET_LOADER_NAME, "unet_name"),
+                "unet_gguf": build_optional_native_input_if_available(UNET_GGUF_LOADER_NAME, "unet_name"),
                 "weight_dtype": build_native_input(UNET_LOADER_NAME, "weight_dtype"),
                 "clip_name": build_optional_native_input(CLIP_LOADER_NAME, "clip_name"),
                 "clip_type": build_optional_native_input(CLIP_LOADER_NAME, "type"),
@@ -39,6 +46,7 @@ class AliceModelLoader:
         self,
         ckpt_name,
         unet_name,
+        unet_gguf,
         weight_dtype,
         clip_name,
         clip_type,
@@ -56,6 +64,7 @@ class AliceModelLoader:
         else:
             model, clip, vae = self.load_from_components(
                 unet_name,
+                unet_gguf,
                 weight_dtype,
                 clip_name,
                 clip_type,
@@ -78,17 +87,19 @@ class AliceModelLoader:
             raise ValueError("Checkpoint loader returned an incomplete MODEL/CLIP/VAE bundle")
         return model, clip, vae
 
-    def load_from_components(self, unet_name, weight_dtype, clip_name, clip_type, clip_device, vae_name):
+    def load_from_components(self, unet_name, unet_gguf, weight_dtype, clip_name, clip_type, clip_device, vae_name):
         missing_fields = [
             field_name
             for field_name, field_value in (
-                ("unet_name", unet_name),
                 ("clip_name", clip_name),
                 ("clip_type", clip_type),
                 ("vae_name", vae_name),
             )
             if field_value == "None"
         ]
+        if unet_name == "None" and unet_gguf == "None":
+            missing_fields.insert(0, "unet_name or unet_gguf")
+
         if missing_fields:
             missing_fields_text = ", ".join(missing_fields)
             if "clip_type" in missing_fields:
@@ -98,11 +109,27 @@ class AliceModelLoader:
                 )
             raise ValueError(f"When ckpt_name is None, these fields are required: {missing_fields_text}")
 
-        unet_loader = get_native_node_class(UNET_LOADER_NAME)()
         clip_loader = get_native_node_class(CLIP_LOADER_NAME)()
         vae_loader = get_native_node_class(VAE_LOADER_NAME)()
 
-        model, = unet_loader.load_unet(unet_name, weight_dtype)
+        model = self.load_unet(unet_name, unet_gguf, weight_dtype)
         clip, = clip_loader.load_clip(clip_name, clip_type, clip_device)
         vae, = vae_loader.load_vae(vae_name)
         return model, clip, vae
+
+    def load_unet(self, unet_name, unet_gguf, weight_dtype):
+        if unet_name != "None":
+            unet_loader = get_native_node_class(UNET_LOADER_NAME)()
+            model, = unet_loader.load_unet(unet_name, weight_dtype)
+            return model
+
+        try:
+            unet_gguf_loader = get_native_node_class(UNET_GGUF_LOADER_NAME)()
+        except RuntimeError as error:
+            raise RuntimeError(
+                "UnetLoaderGGUF is not available. Install or enable ComfyUI-GGUF, "
+                "or select a regular unet_name."
+            ) from error
+
+        model, = unet_gguf_loader.load_unet(unet_gguf)
+        return model

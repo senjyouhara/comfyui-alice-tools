@@ -15,7 +15,7 @@ import PowerLoraAddButtonWidget from "./components/PowerLoraAddButtonWidget.vue"
 import PowerLoraRowWidget from "./components/PowerLoraRowWidget.vue";
 
 const ADD_BUTTON_NAME = "__alice_add_button__";
-const ROW_WIDGET_HEIGHT = 42;
+const ROW_WIDGET_HEIGHT = 74;
 const ADD_BUTTON_WIDGET_HEIGHT = 35;
 
 function normalizeRowValue(initialValue = null) {

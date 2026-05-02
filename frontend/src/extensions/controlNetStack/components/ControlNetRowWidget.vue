@@ -1,8 +1,12 @@
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import StackRowActions from "../../shared/stackWidgets/StackRowActions.vue";
-import { getAvailableControlNets } from "../bridges/controlnetRegistry.js";
+import {
+  getAvailableControlNets,
+  getControlNetPath,
+  loadControlNetPathMap,
+} from "../bridges/controlnetRegistry.js";
 import { moveWidget, roundValue } from "../layout.js";
 
 const props = defineProps({
@@ -20,11 +24,23 @@ const props = defineProps({
   },
 });
 
+const pathMapVersion = ref(0);
 const controlNetOptions = computed(() => ["None", ...getAvailableControlNets()]);
+const selectTitle = computed(() => getControlNetOptionTitle(props.value.controlnet));
 const isEnabled = computed(() => props.value.on !== false);
 const strengthDisplayValue = computed(() => Number(props.value.strength ?? 1).toFixed(2));
 const startPercentDisplayValue = computed(() => Number(props.value.start_percent ?? 0).toFixed(3));
 const endPercentDisplayValue = computed(() => Number(props.value.end_percent ?? 1).toFixed(3));
+
+function getControlNetOptionTitle(option) {
+  pathMapVersion.value;
+  return getControlNetPath(option);
+}
+
+onMounted(async () => {
+  await loadControlNetPathMap();
+  pathMapVersion.value += 1;
+});
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -94,12 +110,13 @@ function removeRow() {
       <select
         class="controlnet-select"
         :value="value.controlnet || 'None'"
+        :title="selectTitle"
         @pointerdown.stop
         @mousedown.stop
         @click.stop
         @change="setControlNet($event.target.value)"
       >
-        <option v-for="option in controlNetOptions" :key="option" :value="option">
+        <option v-for="option in controlNetOptions" :key="option" :value="option" :title="getControlNetOptionTitle(option)">
           {{ option }}
         </option>
       </select>

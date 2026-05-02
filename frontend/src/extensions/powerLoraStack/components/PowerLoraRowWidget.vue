@@ -1,8 +1,8 @@
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import StackRowActions from "../../shared/stackWidgets/StackRowActions.vue";
-import { getAvailableLoras } from "../bridges/loraRegistry.js";
+import { getAvailableLoras, getLoraPath, loadLoraPathMap } from "../bridges/loraRegistry.js";
 import { moveWidget, roundStrength } from "../layout.js";
 
 const props = defineProps({
@@ -20,9 +20,21 @@ const props = defineProps({
   },
 });
 
+const pathMapVersion = ref(0);
 const loraOptions = computed(() => ["None", ...getAvailableLoras()]);
 const isEnabled = computed(() => props.value.on !== false);
 const strengthDisplayValue = computed(() => Number(props.value.strength ?? 1).toFixed(2));
+const selectTitle = computed(() => getLoraOptionTitle(props.value.lora));
+
+function getLoraOptionTitle(option) {
+  pathMapVersion.value;
+  return getLoraPath(option);
+}
+
+onMounted(async () => {
+  await loadLoraPathMap();
+  pathMapVersion.value += 1;
+});
 
 function markDirty() {
   props.node.setDirtyCanvas?.(true, true);
@@ -65,38 +77,42 @@ function removeRow() {
 
 <template>
   <div class="power-lora-row" @pointerdown.stop @mousedown.stop @click.stop>
-    <button
-      class="toggle"
-      type="button"
-      :class="{ 'is-off': !isEnabled }"
-      :aria-pressed="isEnabled"
-      aria-label="Toggle LoRA row"
-      @click="setEnabled(!isEnabled)"
-    />
-
-    <select class="lora-select" :value="value.lora || 'None'" @change="setLora($event.target.value)">
-      <option v-for="option in loraOptions" :key="option" :value="option">
-        {{ option }}
-      </option>
-    </select>
-
-    <div class="strength-group">
-      <button type="button" class="icon-button" aria-label="Decrease strength" @click="adjustStrength(-0.05)">
-        <i class="pi pi-minus" aria-hidden="true"></i>
-      </button>
-      <input
-        class="strength-input"
-        type="number"
-        step="0.05"
-        :value="strengthDisplayValue"
-        @change="setStrength($event.target.value)"
+    <div class="top-row">
+      <button
+        class="toggle"
+        type="button"
+        :class="{ 'is-off': !isEnabled }"
+        :aria-pressed="isEnabled"
+        aria-label="Toggle LoRA row"
+        @click="setEnabled(!isEnabled)"
       />
-      <button type="button" class="icon-button" aria-label="Increase strength" @click="adjustStrength(0.05)">
-        <i class="pi pi-plus" aria-hidden="true"></i>
-      </button>
+
+      <select class="lora-select" :value="value.lora || 'None'" :title="selectTitle" @change="setLora($event.target.value)">
+        <option v-for="option in loraOptions" :key="option" :value="option" :title="getLoraOptionTitle(option)">
+          {{ option }}
+        </option>
+      </select>
     </div>
 
-    <StackRowActions @move-up="move(-1)" @move-down="move(1)" @remove="removeRow" />
+    <div class="bottom-row">
+      <div class="strength-group">
+        <button type="button" class="icon-button" aria-label="Decrease strength" @click="adjustStrength(-0.05)">
+          <i class="pi pi-minus" aria-hidden="true"></i>
+        </button>
+        <input
+          class="strength-input"
+          type="number"
+          step="0.05"
+          :value="strengthDisplayValue"
+          @change="setStrength($event.target.value)"
+        />
+        <button type="button" class="icon-button" aria-label="Increase strength" @click="adjustStrength(0.05)">
+          <i class="pi pi-plus" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <StackRowActions @move-up="move(-1)" @move-down="move(1)" @remove="removeRow" />
+    </div>
   </div>
 </template>
 
@@ -114,16 +130,28 @@ function removeRow() {
 .power-lora-row {
   box-sizing: border-box;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   width: 100%;
-  min-height: 34px;
-  padding: 4px 10px;
+  min-height: 66px;
+  padding: 4px 10px 8px;
   border: 1px solid #4a5568;
   border-radius: 8px;
   background: #1f2937;
   color: #e5e7eb;
   font-size: 12px;
+}
+
+.top-row,
+.bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.bottom-row {
+  justify-content: space-between;
 }
 
 .toggle,
